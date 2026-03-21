@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nis-mc"
+version = "0.1.0"
+description = "Neural Importance Sampling benchmarking for MC integration"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "pandas",
+    "vegas"
+]
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+ml = ["torch"]
+hep = ["scikit-hep", "uproot"]
+dev = ["pytest", "ruff", "nbconvert"]
