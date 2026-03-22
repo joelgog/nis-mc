@@ -1,7 +1,7 @@
 """
 Affine Coupling module.
 
-Implements a single, minimal affine coupling layer using NumPy for teaching.
+Implements a single, minimal affine coupling layer using PyTorch for teaching.
 
 Architecture: y = sigmoid(s · logit(u) + t) where u ~ U(0,1).
 
@@ -16,19 +16,17 @@ Behaviour:
   s→0, t=L  →  y concentrates around sigmoid(L)
 """
 
-import numpy as np
+import torch
+import torch.nn as nn
 
+def _logit(x: torch.Tensor) -> torch.Tensor:
+    x = torch.clamp(x, 1e-7, 1.0 - 1e-7)
+    return torch.log(x / (1.0 - x))
 
-def _logit(x: np.ndarray) -> np.ndarray:
-    x = np.clip(x, 1e-7, 1.0 - 1e-7)
-    return np.log(x / (1.0 - x))
+def _sigmoid(z: torch.Tensor) -> torch.Tensor:
+    return torch.sigmoid(z)
 
-
-def _sigmoid(z: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-z))
-
-
-class AffineCouplingLayer1D:
+class AffineCouplingLayer1D(nn.Module):
     """
     A minimal 1D Affine Coupling Layer for Normalizing Flows.
 
@@ -38,15 +36,16 @@ class AffineCouplingLayer1D:
         y = sigmoid(w)            # -> (0,1), full support
 
     Attributes:
-        s (float): Scale parameter. s=1 gives uniform; smaller s concentrates.
-        t (float): Translation. sigmoid(t) is the mode of the distribution.
+        s (nn.Parameter): Scale parameter. s=1 gives uniform; smaller s concentrates.
+        t (nn.Parameter): Translation. sigmoid(t) is the mode of the distribution.
     """
 
     def __init__(self, s: float = 1.0, t: float = 0.0):
-        self.s = s
-        self.t = t
+        super().__init__()
+        self.s = nn.Parameter(torch.tensor([float(s)]))
+        self.t = nn.Parameter(torch.tensor([float(t)]))
 
-    def forward(self, u: np.ndarray) -> np.ndarray:
+    def forward(self, u: torch.Tensor) -> torch.Tensor:
         """
         Forward map: u ~ U(0,1)  →  y in (0,1) with full support.
 
@@ -61,7 +60,7 @@ class AffineCouplingLayer1D:
         y = _sigmoid(w)          # → (0,1)
         return y
 
-    def inverse(self, y: np.ndarray) -> np.ndarray:
+    def inverse(self, y: torch.Tensor) -> torch.Tensor:
         """
         Inverse map: y  →  u
 
@@ -72,7 +71,7 @@ class AffineCouplingLayer1D:
         u = _sigmoid(z)
         return u
 
-    def log_prob(self, y: np.ndarray) -> np.ndarray:
+    def log_prob(self, y: torch.Tensor) -> torch.Tensor:
         """
         Log density log q(y) under the logit-sigmoid flow.
 
@@ -88,19 +87,21 @@ class AffineCouplingLayer1D:
             - s=1,t=0:  log q(y) = 0  (uniform)  ✓
             - Small s:  density peaks sharply at sigmoid(t)  ✓
         """
-        y = np.clip(y, 1e-7, 1.0 - 1e-7)
+        y = torch.clamp(y, 1e-7, 1.0 - 1e-7)
         u = self.inverse(y)
-        u = np.clip(u, 1e-7, 1.0 - 1e-7)
+        u = torch.clamp(u, 1e-7, 1.0 - 1e-7)
 
         log_q_y = (
-            np.log(u) + np.log(1.0 - u)
-            - np.log(np.abs(self.s))
-            - np.log(y) - np.log(1.0 - y)
+            torch.log(u) + torch.log(1.0 - u)
+            - torch.log(torch.abs(self.s))
+            - torch.log(y) - torch.log(1.0 - y)
         )
         return log_q_y
 
     def diagram_ascii(self):
         """Prints an ASCII diagram of the transformation."""
+        s_val = self.s.item()
+        t_val = self.t.item()
         print(f"""
         AffineCouplingLayer1D (logit-sigmoid):
         ======================================
@@ -109,8 +110,8 @@ class AffineCouplingLayer1D:
           [Base Space]  → Logistic(0,1) →  affine  →  [Target Space]
 
         Current Parameters:
-          s = {self.s:.4f}   (s<1 concentrates, s=1 is uniform)
-          t = {self.t:.4f}   (mode at sigmoid(t) = {_sigmoid(self.t):.4f})
+          s = {s_val:.4f}   (s<1 concentrates, s=1 is uniform)
+          t = {t_val:.4f}   (mode at sigmoid(t) = {_sigmoid(torch.tensor(t_val)):.4f})
 
         Jacobian |dy/du| = s · y(1-y) / (u(1-u))
         """)
